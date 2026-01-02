@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR Solver – Student Homework App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #a855f7;
+            --bg-light: #f8fafc;
+            --card-bg: #ffffff;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-light);
+            color: #1e293b;
+            overflow-x: hidden;
+        }
+
+        /* Sidebar Animation */
+        #sidebar {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 50;
+        }
+
+        #sidebar.closed {
+            transform: translateX(-100%);
+        }
+
+        #backdrop {
+            transition: opacity 0.3s ease;
+            z-index: 40;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+
+        /* Subject Card Styles */
+        .subject-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+
+        .subject-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .subject-card.selected {
+            border-color: var(--primary);
+            background-color: #eef2ff;
+        }
+
+        /* Loader Animation */
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Markdown Styling */
+        .solution-content p { margin-bottom: 1rem; line-height: 1.6; }
+        .solution-content ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1rem; }
+        .solution-content ol { list-style-type: decimal; margin-left: 1.5rem; margin-bottom: 1rem; }
+        .solution-content li { margin-bottom: 0.5rem; }
+        .solution-content strong { font-weight: 700; color: #4338ca; }
+        
+        /* Gradient Text */
+        .gradient-text {
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <!-- Sidebar Backdrop -->
+    <div id="backdrop" class="fixed inset-0 bg-black opacity-0 pointer-events-none transition-opacity"></div>
+
+    <!-- Sidebar -->
+    <div id="sidebar" class="fixed top-0 left-0 h-full w-[80%] md:w-80 bg-white shadow-2xl closed overflow-y-auto">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-xl font-bold text-gray-800">Settings</h2>
+                <button id="closeSidebar" class="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Language Preference</label>
+                    <input type="text" id="langInput" placeholder="e.g. English, Spanish, French" class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Response Tone</label>
+                    <select id="toneInput" class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <option value="Encouraging">Encouraging</option>
+                        <option value="Formal">Formal</option>
+                        <option value="Simple">Simple</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mt-12 pt-8 border-t border-gray-100">
+                <p class="text-xs text-gray-400">Version 2.1.0</p>
+                <p class="text-xs text-gray-400 font-mono">Model: gemini-2.5-flash-preview</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="sticky top-0 glass z-30 border-b border-gray-100 px-4 py-4 md:px-8">
+        <div class="max-w-5xl mx-auto flex items-center gap-4">
+            <button id="openSidebar" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+            </button>
+            <div>
+                <h1 class="text-2xl font-bold gradient-text">AR Solver</h1>
+                <p class="text-xs text-gray-500 uppercase tracking-widest font-semibold">Your Intelligent Homework Assistant</p>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 py-8 pb-24">
+        
+        <!-- Subject Selection -->
+        <section class="mb-10">
+            <h2 class="text-lg font-semibold text-gray-800 mb-6 flex items-center">
+                <span class="mr-2">📚</span> Choose Your Subject
+            </h2>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4" id="subjectGrid">
+                <div class="subject-card p-4 rounded-2xl bg-white shadow-sm flex flex-col items-center text-center" data-subject="Mathematics">
+                    <span class="text-3xl mb-2">➗</span>
+                    <span class="text-sm font-medium">Mathematics</span>
+                </div>
+                <div class="subject-card p-4 rounded-2xl bg-white shadow-sm flex flex-col items-center text-center" data-subject="Science">
+                    <span class="text-3xl mb-2">🧪</span>
+                    <span class="text-sm font-medium">Science</span>
+                </div>
+                <div class="subject-card p-4 rounded-2xl bg-white shadow-sm flex flex-col items-center text-center" data-subject="History">
+                    <span class="text-3xl mb-2">📜</span>
+                    <span class="text-sm font-medium">History</span>
+                </div>
+                <div class="subject-card p-4 rounded-2xl bg-white shadow-sm flex flex-col items-center text-center" data-subject="English">
+                    <span class="text-3xl mb-2">📚</span>
+                    <span class="text-sm font-medium">English</span>
+                </div>
+                <div class="subject-card p-4 rounded-2xl bg-white shadow-sm flex flex-col items-center text-center" data-subject="Computer Science">
+                    <span class="text-3xl mb-2">💻</span>
+                    <span class="text-sm font-medium">CS</span>
+                </div>
+                <div class="subject-card p-4 rounded-2xl bg-white shadow-sm flex flex-col items-center text-center selected" data-subject="General">
+                    <span class="text-3xl mb-2">✨</span>
+                    <span class="text-sm font-medium">General</span>
+                </div>
+            </div>
+            <p class="mt-4 text-center text-sm text-indigo-600 font-medium" id="selectedLabel">Selected: General</p>
+        </section>
+
+        <!-- Solver Card -->
+        <div class="bg-white rounded-3xl shadow-xl shadow-indigo-100/50 overflow-hidden border border-indigo-50">
+            <div class="p-6 md:p-8">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">Ask a Question ✍️</h3>
+                
+                <textarea id="questionInput" 
+                    class="w-full min-h-[150px] p-4 text-lg border border-gray-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none mb-4"
+                    placeholder="Type your question here or upload a photo of your homework..."></textarea>
+
+                <div class="flex flex-col md:flex-row gap-4 items-center">
+                    <div class="w-full md:w-auto">
+                        <label class="flex items-center justify-center gap-2 px-6 py-3 bg-gray-50 hover:bg-gray-100 border border-dashed border-gray-300 rounded-xl cursor-pointer transition-colors text-gray-600 font-medium">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span>Upload Image</span>
+                            <input type="file" id="imageInput" accept="image/*" class="hidden">
+                        </label>
+                    </div>
+
+                    <button id="submitBtn" disabled 
+                        class="w-full md:flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-2xl transition-all shadow-lg shadow-indigo-200">
+                        Get Solution Instantly
+                    </button>
+                </div>
+
+                <!-- Image Preview -->
+                <div id="previewContainer" class="hidden mt-6 relative inline-block">
+                    <img id="imagePreview" src="" class="max-h-48 rounded-xl border-2 border-indigo-100 shadow-sm">
+                    <button id="removeImage" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Box -->
+        <div id="errorBox" class="hidden mt-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-2xl flex items-center gap-3">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span id="errorMsg">Something went wrong. Please try again.</span>
+        </div>
+
+        <!-- Result Area -->
+        <div id="resultArea" class="hidden mt-10 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div class="bg-white rounded-3xl p-6 md:p-8 shadow-xl border border-indigo-50">
+                <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <span class="text-indigo-600">AI Solution</span> 💡
+                </h3>
+                <div id="solutionContent" class="solution-content text-gray-700">
+                    <!-- Solution inserted here -->
+                </div>
+            </div>
+
+            <!-- Citations -->
+            <div id="citationArea" class="hidden bg-indigo-50 rounded-2xl p-6 border border-indigo-100">
+                <h4 class="text-sm font-bold text-indigo-900 uppercase tracking-widest mb-4">Sources & Citations</h4>
+                <div id="citationList" class="flex flex-wrap gap-3">
+                    <!-- Links inserted here -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // API CONFIGURATION
+        const API_KEY = "AIzaSyBEEccKVQD2h1YktomgUNtwuPZZH1iT3dw";
+        const MODEL = "gemini-2.5-flash-preview-09-2025";
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
+
+        // STATE
+        let selectedSubject = "General";
+        let base64Image = null;
+        let imageMime = null;
+
+        // DOM ELEMENTS
+        const sidebar = document.getElementById('sidebar');
+        const backdrop = document.getElementById('backdrop');
+        const openSidebarBtn = document.getElementById('openSidebar');
+        const closeSidebarBtn = document.getElementById('closeSidebar');
+        const subjectCards = document.querySelectorAll('.subject-card');
+        const selectedLabel = document.getElementById('selectedLabel');
+        const questionInput = document.getElementById('questionInput');
+        const imageInput = document.getElementById('imageInput');
+        const submitBtn = document.getElementById('submitBtn');
+        const previewContainer = document.getElementById('previewContainer');
+        const imagePreview = document.getElementById('imagePreview');
+        const removeImageBtn = document.getElementById('removeImage');
+        const resultArea = document.getElementById('resultArea');
+        const solutionContent = document.getElementById('solutionContent');
+        const citationArea = document.getElementById('citationArea');
+        const citationList = document.getElementById('citationList');
+        const errorBox = document.getElementById('errorBox');
+        const errorMsg = document.getElementById('errorMsg');
+
+        // SIDEBAR LOGIC
+        const toggleSidebar = (isOpen) => {
+            if (isOpen) {
+                sidebar.classList.remove('closed');
+                backdrop.classList.add('opacity-50');
+                backdrop.classList.remove('pointer-events-none');
+                document.body.style.overflow = 'hidden';
+            } else {
+                sidebar.classList.add('closed');
+                backdrop.classList.remove('opacity-50');
+                backdrop.classList.add('pointer-events-none');
+                document.body.style.overflow = 'auto';
+            }
+        };
+
+        openSidebarBtn.addEventListener('click', () => toggleSidebar(true));
+        closeSidebarBtn.addEventListener('click', () => toggleSidebar(false));
+        backdrop.addEventListener('click', () => toggleSidebar(false));
+
+        // SUBJECT SELECTION
+        subjectCards.forEach(card => {
+            card.addEventListener('click', () => {
+                subjectCards.forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                selectedSubject = card.dataset.subject;
+                selectedLabel.textContent = `Selected: ${selectedSubject}`;
+            });
+        });
+
+        // INPUT CHECKING
+        const checkInputs = () => {
+            submitBtn.disabled = !questionInput.value.trim() && !base64Image;
+        };
+
+        questionInput.addEventListener('input', checkInputs);
+
+        // IMAGE HANDLING
+        imageInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                imageMime = file.type;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    base64Image = event.target.result.split(',')[1];
+                    imagePreview.src = event.target.result;
+                    previewContainer.classList.remove('hidden');
+                    checkInputs();
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        removeImageBtn.addEventListener('click', () => {
+            base64Image = null;
+            imageMime = null;
+            imageInput.value = '';
+            previewContainer.classList.add('hidden');
+            checkInputs();
+        });
+
+        // MARKDOWN TO HTML CONVERTER
+        const parseMarkdown = (text) => {
+            // Clean math delimiters
+            let html = text.replace(/\$\$(.*?)\$\$/gs, '$1');
+            html = html.replace(/\$(.*?)\$/g, '$1');
+
+            // Paragraphs
+            html = html.split('\n\n').map(p => {
+                if (p.startsWith('* ') || p.startsWith('- ') || /^\d+\./.test(p)) return p;
+                return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+            }).join('');
+
+            // Bold
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            // Italic
+            html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+            // Unordered Lists
+            html = html.replace(/^\s*[\*\-]\s+(.*)/gm, '<li>$1</li>');
+            html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+
+            // Ordered Lists
+            html = html.replace(/^\s*\d+\.\s+(.*)/gm, '<li>$1</li>');
+            // This is simple; complex nested lists might need a better regex or library
+            
+            return html;
+        };
+
+        // API CALL WITH BACKOFF
+        async function callGemini(payload, retries = 0) {
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.status === 429 && retries < 5) {
+                    const delay = Math.pow(2, retries) * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return callGemini(payload, retries + 1);
+                }
+
+                if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+                return await response.json();
+            } catch (err) {
+                throw err;
+            }
+        }
+
+        // FORM SUBMISSION
+        submitBtn.addEventListener('click', async () => {
+            const question = questionInput.value.trim();
+            const lang = document.getElementById('langInput').value || 'English';
+            const tone = document.getElementById('toneInput').value;
+
+            // UI Reset
+            errorBox.classList.add('hidden');
+            resultArea.classList.add('hidden');
+            submitBtn.innerHTML = `<span class="loader"></span> Solving...`;
+            submitBtn.disabled = true;
+
+            const systemPrompt = `You are AR Solver, a professional student homework assistant.
+                Current Subject: ${selectedSubject}.
+                Response Tone: ${tone}.
+                Response Language: ${lang}.
+                Instructions:
+                1. Provide detailed, step-by-step explanations.
+                2. If an image is provided, accurately transcribe and solve the text/problem within it.
+                3. Use clean formatting. Do not use LaTeX wrappers like $$ or $ unless strictly necessary for complex formulas.
+                4. Be encouraging yet academically rigorous.
+                5. Use Google S
